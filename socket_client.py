@@ -1,13 +1,15 @@
 import socket
 import json
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import PKCS1_OAEP
+# from Cryptodome.PublicKey import RSA
+# from Cryptodome.Cipher import PKCS1_OAEP
 from tugas1KI_desAlgorithm import encrypt_text, decrypt_text, rkb, rk
+import rsa
 
 def generate_key_pair():
-    key = RSA.generate(2048)
-    private_key = key.export_key()
-    public_key = key.publickey().export_key()
+    # key = RSA.generate(2048)
+    # private_key = key.export_key()
+    # public_key = key.publickey().export_key()
+    public_key, private_key = rsa.generateKey(1024)
     return private_key, public_key
 
 def send_public_key_to_pka(name, public_key):
@@ -18,7 +20,10 @@ def send_public_key_to_pka(name, public_key):
         pka_socket = socket.socket()
         pka_socket.connect((host, port))
 
-        key_data = json.dumps({"action": "register", "name": name, "public_key": public_key.decode()})
+        n_base64 = public_key[0]
+        e_base64 = public_key[1]
+
+        key_data = json.dumps({"action": "register", "name": name, "public_key": {"n": n_base64, "e": e_base64}})
         pka_socket.send(key_data.encode())
 
         response = pka_socket.recv(2048).decode()
@@ -48,15 +53,15 @@ def get_public_key_from_pka(name):
         print(f"Error retrieving key from PKA: {e}")
         return None
 
-def rsa_encrypt_message(message, recipient_public_key):
-    recipient_key = RSA.import_key(recipient_public_key.encode())
-    cipher = PKCS1_OAEP.new(recipient_key)
-    return cipher.encrypt(message.encode())
+# def rsa_encrypt_message(message, recipient_public_key):
+#     recipient_key = RSA.import_key(recipient_public_key.encode())
+#     cipher = PKCS1_OAEP.new(recipient_key)
+#     return cipher.encrypt(message.encode())
 
-def rsa_decrypt_message(encrypted_message, private_key):
-    private_key = RSA.import_key(private_key)
-    cipher = PKCS1_OAEP.new(private_key)
-    return cipher.decrypt(encrypted_message).decode()
+# def rsa_decrypt_message(encrypted_message, private_key):
+#     private_key = RSA.import_key(private_key)
+#     cipher = PKCS1_OAEP.new(private_key)
+#     return cipher.decrypt(encrypted_message).decode()
 
 def client_program():
     # Generate RSA key pair
@@ -87,12 +92,12 @@ def client_program():
 
     while message.lower().strip() != 'bye':
         # Encrypt the message using recipient's public key
-        encrypted_message = rsa_encrypt_message(message, recipient_public_key)
+        encrypted_message = rsa.encrypt(message, recipient_public_key)
         client_socket.send(encrypted_message)
 
         # Receive and decrypt the response
         encrypted_response = client_socket.recv(2048)
-        decrypted_response = rsa_decrypt_message(encrypted_response, private_key)
+        decrypted_response = rsa.decrypt(encrypted_response, private_key)
 
         print("Received from other client:", decrypted_response)
 
