@@ -20,8 +20,9 @@ def generateKey(keySize):
   d = cryptomath.findModInverse(e, (p - 1) * (q - 1))
   publicKey = (n, e)
   privateKey = (n, d)
-  # print('Public key:', publicKey)
-  # print('Private key:', privateKey)
+  print('Public key:', publicKey)
+  print('\n\n\n\n')
+  print('Private key:', privateKey)
   return (publicKey, privateKey)
 
 def encrypt(publicKey, message):

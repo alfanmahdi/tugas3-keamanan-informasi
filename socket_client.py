@@ -26,7 +26,7 @@ def send_public_key_to_pka(name, public_key):
         key_data = json.dumps({"action": "register", "name": name, "public_key": {"n": n_base64, "e": e_base64}})
         pka_socket.send(key_data.encode())
 
-        response = pka_socket.recv(2048).decode()
+        response = pka_socket.recv(4096).decode()
         print("Response from PKA:", response)
 
         pka_socket.close()
@@ -53,15 +53,42 @@ def get_public_key_from_pka(name):
         print(f"Error retrieving key from PKA: {e}")
         return None
 
-# def rsa_encrypt_message(message, recipient_public_key):
-#     recipient_key = RSA.import_key(recipient_public_key.encode())
-#     cipher = PKCS1_OAEP.new(recipient_key)
-#     return cipher.encrypt(message.encode())
+def rsa_encrypt_message(message, public_key):
+    n = public_key['n']
+    e = public_key['e']
 
-# def rsa_decrypt_message(encrypted_message, private_key):
-#     private_key = RSA.import_key(private_key)
-#     cipher = PKCS1_OAEP.new(private_key)
-#     return cipher.decrypt(encrypted_message).decode()
+    n = int(n)
+    e = int(e)
+    
+    chunk_size = 256
+    cipher = []
+
+    for i in range(0, len(message), chunk_size):
+        chunk = message[i:i + chunk_size]
+        # Convert chunk to a single integer
+        chunk_int = int.from_bytes(chunk.encode(), byteorder='big')
+        # Encrypt the integer
+        encrypted_chunk = pow(chunk_int, e, n)
+        cipher.append(encrypted_chunk)
+
+    return json.dumps(cipher).encode()
+
+def rsa_decrypt_message(encrypted_message, private_key):
+    n = private_key[0]
+    d = private_key[1]
+    n = int(n)
+    d = int(d)
+
+    cipher = json.loads(encrypted_message.decode())
+    plain = ''
+    for encrypted_chunk in cipher:
+        # Decrypt the integer
+        decrypted_chunk_int = pow(encrypted_chunk, d, n)
+        # Convert integer back to string
+        decrypted_chunk = decrypted_chunk_int.to_bytes((decrypted_chunk_int.bit_length() + 7) // 8, byteorder='big').decode()
+        plain += decrypted_chunk
+
+    return plain
 
 def client_program():
     # Generate RSA key pair
@@ -92,12 +119,12 @@ def client_program():
 
     while message.lower().strip() != 'bye':
         # Encrypt the message using recipient's public key
-        encrypted_message = rsa.encrypt(message, recipient_public_key)
+        encrypted_message = rsa_encrypt_message(message, recipient_public_key)
         client_socket.send(encrypted_message)
 
         # Receive and decrypt the response
         encrypted_response = client_socket.recv(2048)
-        decrypted_response = rsa.decrypt(encrypted_response, private_key)
+        decrypted_response = rsa_decrypt_message(encrypted_response, private_key)
 
         print("Received from other client:", decrypted_response)
 
