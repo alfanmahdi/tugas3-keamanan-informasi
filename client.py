@@ -107,17 +107,15 @@ def handshake_sender(client_socket, client_id, public_key, private_key):
 
     # Langkah 4: Terima n1 dan n2 dari target
     n1n2_raw_data = client_socket.recv(4096).decode()
-    print("Raw n1n2 data received:", n1n2_raw_data)
 
     # Parse JSON data
     n1n2_data = json.loads(n1n2_raw_data)
-    print("Parsed data:", n1n2_data)
+    print("Parsed data from receiver:", n1n2_data)
 
     if n1n2_data.get("action") != "send_message" or "message" not in n1n2_data:
             print("Invalid message format or action.")
             return False
     
-    print("Received n1 and n2 data:", n1n2_data)
     decrypted_n1n2 = n1n2_data["message"]
     decrypted_n1n2 = decrypt_message(decrypted_n1n2, private_key)
     decrypted_n1n2 = json.loads(decrypted_n1n2)
@@ -201,11 +199,10 @@ def handshake_receiver(client_socket, client_id, public_key, private_key):
     try:
         # Langkah 1: Terima data JSON dari sender
         raw_data = client_socket.recv(4096).decode()
-        print("Raw data received:", raw_data)
 
         # Parse JSON data
         data = json.loads(raw_data)
-        print("Parsed data:", data)
+        print("Parsed data from sender:", data)
 
         # Pastikan ini adalah pesan dengan action "send_message"
         if data.get("action") != "send_message" or "message" not in data:
@@ -249,7 +246,6 @@ def handshake_receiver(client_socket, client_id, public_key, private_key):
 
         # Langkah 4: Terima n2 dari sender
         data = client_socket.recv(4096).decode()
-        print("Received n2 data:", data)
 
         # Parse JSON data
         data = json.loads(data)
@@ -277,7 +273,7 @@ def handshake_receiver(client_socket, client_id, public_key, private_key):
             "action": "send_message",
             "message": second_encrypted_des_key
         }
-        print("Request 2 being sent:", request2)
+        print("DES Key being sent:", request2)
         client_socket.send(json.dumps(request2).encode())
         
         fix_des_key = DES_key
