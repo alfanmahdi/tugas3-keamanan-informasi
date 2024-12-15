@@ -2,72 +2,46 @@ import socket
 import json
 import random
 import math
+import cryptomath
 from tugas1KI_desAlgorithm import ascii2bin, bin2ascii, xor, permute, keyp, shift_left, shift_table, key_comp, bin2hex, encrypt_text, decrypt_text
 
 # A set will be the collection of prime numbers, where we can select random primes p and q
-prime = set()
-n = None
-
-# Fill the set of prime numbers
-def primefiller():
-    seive = [True] * 250
-    seive[0] = seive[1] = False
-    for i in range(2, 250):
-        if seive[i]:
-            for j in range(i * 2, 250, i):
-                seive[j] = False
-    for i in range(len(seive)):
-        if seive[i]:
-            prime.add(i)
-
-# Pick a random prime number
-def pickrandomprime():
-    global prime
-    k = random.randint(0, len(prime) - 1)
-    it = iter(prime)
-    for _ in range(k):
-        next(it)
-    ret = next(it)
-    prime.remove(ret)
-    return ret
+primes = [2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97]
 
 # Set public and private keys
 def setkeys():
-    global n
-    prime1 = pickrandomprime()
-    prime2 = pickrandomprime()
-    n = prime1 * prime2
-    fi = (prime1 - 1) * (prime2 - 1)
-
+    p, q = random.sample(primes, 2)
+    n = p * q
+    phi = (p - 1) * (q - 1)
     e = 2
-    while math.gcd(e, fi) != 1:
+    while math.gcd(e, phi) != 1:
         e += 1
-    public_key = e
+    
+    d = cryptomath.findModInverse(e, phi)
 
-    d = 2
-    while (d * e) % fi != 1:
-        d += 1
-    private_key = d
+    public_key = (e, n)
+    private_key = (d, n)
+
+    print(f"Public Key: {public_key}")
+    print(f"Private Key: {private_key}")
 
     return public_key, private_key
 
 # Encrypt a number
-def encrypt(message, key):
-    global n
+def encrypt(message, key, n):
     return pow(message, key, n)
 
 # Decrypt a number
-def decrypt(encrypted_text, key):
-    global n
+def decrypt(encrypted_text, key, n):
     return pow(encrypted_text, key, n)
 
 # Encode a list of numbers
-def encoder(message_list, key):
-    return [encrypt(num, key) for num in message_list]
+def encoder(message_list, key, n):
+    return [encrypt(num, key, n) for num in message_list]
 
 # Decode a list of numbers
-def decoder(encoded_list, key):
-    return [decrypt(num, key) for num in encoded_list]
+def decoder(encoded_list, key, n):
+    return [decrypt(num, key, n) for num in encoded_list]
 
 # Convert a string to a list of ASCII values
 def string_to_ascii(message):
@@ -104,14 +78,13 @@ def get_public_key_from_pka(name):
         response = pka_socket.recv(2048).decode()
         pka_socket.close()
         key_data = json.loads(response)
-        return int(key_data.get("public_key"))
+        return tuple(map(int, key_data.get("public_key")))
     except Exception as e:
         print(f"Error retrieving key from PKA: {e}")
         return None
 
 # Check and set keys
 def check_and_set_keys(name):
-    global n
     public_key = get_public_key_from_pka(name)
     if public_key:
         print(f"Public key for {name} already registered with PKA.")
@@ -122,9 +95,25 @@ def check_and_set_keys(name):
         send_public_key_to_pka(name, public_key)
         return public_key, private_key
 
+# Handshake mechanism to establish connection and verify public keys
+def handshake(client_socket, client_name, client_public_key, other_public_key):
+    try:
+        handshake_data = json.dumps({"action": "handshake", "name": client_name, "public_key": client_public_key})
+        client_socket.send(handshake_data.encode())
+        response = client_socket.recv(2048).decode()
+        response_data = json.loads(response)
+        if tuple(response_data.get("public_key")) == other_public_key:
+            print("Handshake successful. Public key verified.")
+            return True
+        else:
+            print("Handshake failed. Public key verification failed.")
+            return False
+    except Exception as e:
+        print(f"Error during handshake: {e}")
+        return False
+
 # Main client program
 def client_program():
-    primefiller()
     role = input("Sender/Receiver: ").strip().lower()
     host = socket.gethostname()
     port = 5000
@@ -132,6 +121,7 @@ def client_program():
     client_socket.connect((host, port))
     client_name = input("Enter your name: ")
     client_public_key, client_private_key = check_and_set_keys(client_name)
+    print(client_private_key)
 
     if role == "sender":
         recipient_name = input("Enter the recipient's name: ")
@@ -144,12 +134,17 @@ def client_program():
         print(f"Public Key Receiver: {recipient_public_key}")
         print(f"Private Key Sender: {client_private_key}")
 
+        if not handshake(client_socket, client_name, client_public_key, recipient_public_key):
+            print("Handshake failed. Exiting.")
+            client_socket.close()
+            return
+
         des_key = "haloBandung"
         des_key_ascii = string_to_ascii(des_key)
-        first_encrypted_des_key = encoder(des_key_ascii, client_private_key)
+        first_encrypted_des_key = encoder(des_key_ascii, client_private_key[0], client_private_key[1])
         print(f"First encrypted DES key: {first_encrypted_des_key}")
 
-        second_encrypted_des_key = encoder(first_encrypted_des_key, recipient_public_key)
+        second_encrypted_des_key = encoder(first_encrypted_des_key, recipient_public_key[0], recipient_public_key[1])
         print(f"Second encrypted DES key: {second_encrypted_des_key}")
         
         encrypted_key_json = json.dumps(second_encrypted_des_key)
@@ -202,15 +197,20 @@ def client_program():
         print(f"Public Key Receiver: {client_public_key}")
         print(f"Private Key Receiver: {client_private_key}")
 
+        if not handshake(client_socket, client_name, client_public_key, sender_public_key):
+            print("Handshake failed. Exiting.")
+            client_socket.close()
+            return
+
         received_des_key = json.loads(client_socket.recv(2048).decode())
         print(f"Received encrypted DES key: {received_des_key}")
 
         # First decryption with private key
-        first_decrypted_des_key = decoder(received_des_key, client_private_key)
+        first_decrypted_des_key = decoder(received_des_key, client_private_key[0], client_private_key[1])
         print(f"First decrypted DES key: {first_decrypted_des_key}")
 
         # Second decryption with sender's public key
-        second_decrypted_des_key = decoder(first_decrypted_des_key, sender_public_key)
+        second_decrypted_des_key = decoder(first_decrypted_des_key, sender_public_key[0], sender_public_key[1])
         print(f"Second decrypted DES key: {second_decrypted_des_key}")
 
         # Convert back to string
